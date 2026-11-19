@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AtaDos</title>
+<link rel="stylesheet" href="styles/style.css">
+</head>
+<body>
+
+<canvas id="game"></canvas>
+<div id="numbers"></div>
+<div id="flash"></div>
+<div id="vignette"></div>
+
+<!-- ============ HUD ============ -->
+<div id="hud" class="hidden">
+  <div id="bossPanel">
+    <div id="bossName">—</div>
+    <div id="bossBar"><div id="bossGhost"></div><div id="bossFill"></div><div id="bossNotches"></div></div>
+    <div id="bossLine"><span id="bossSub"></span><span id="bossStatus"></span></div>
+  </div>
+
+  <div id="combo"></div>
+  <div id="charge"></div>
+
+  <div id="lifePanel">
+    <div id="links"></div>
+    <div class="lbl">VIDA COMPARTIDA <span id="mods"></span></div>
+  </div>
+
+  <div class="pcard p1">
+    <div class="pname"><i></i>P1 · LAZO</div>
+    <div class="pkeys" id="p1keys">WASD · ESPACIO</div>
+    <div class="dashbar"><div id="p1dash"></div></div>
+  </div>
+  <div class="pcard p2">
+    <div class="pname"><i></i>P2 · BRASA</div>
+    <div class="pkeys" id="p2keys">FLECHAS · ENTER</div>
+    <div class="dashbar"><div id="p2dash"></div></div>
+  </div>
+
+  <div id="hint"></div>
+</div>
+
+<div id="banner"><div id="bannerBig"></div><div id="bannerSmall"></div></div>
+<div id="devInfo"></div>
+
+<!-- ============ TÍTULO ============ -->
+<div id="title" class="screen hidden">
+  <div class="logo">
+    <span class="l1">ATA</span><span class="chainmark"><i></i><i></i><i></i></span><span class="l2">DOS</span>
+  </div>
+  <div class="tagline">Dos jugadores. Una cadena. Ningún arma más.</div>
+
+  <div class="menu">
+    <button id="btnCoop" class="primary"><b>1</b> 2 JUGADORES <small>mismo teclado o 2 controles</small></button>
+    <button id="btnSolo"><b>2</b> 1 JUGADOR <small>manejas a los dos</small></button>
+    <button id="btnPractice" class="ghost">PRACTICAR UN JEFE</button>
+  </div>
+  <div id="practiceRow" class="hidden">
+    <div id="practiceBosses"></div>
+    <label class="chk"><input type="checkbox" id="practiceSolo"> modo 1 jugador</label>
+  </div>
+
+  <div class="howto">
+    <div><span class="ico">⛓️</span><b>La cadena es el arma.</b> Pásenla a través del jefe: mientras más rápido barre, más daño.</div>
+    <div><span class="ico">⚔️</span><b>TAJO:</b> cruzar al jefe de un lado al otro pega extra. Encadénenlos.</div>
+    <div><span class="ico">⚡</span><b>Carga:</b> atrapen proyectiles <span class="orange">naranjos</span> con la cadena y el próximo TAJO pega más. Los <span class="purple">morados</span> la atraviesan.</div>
+    <div><span class="ico">❤️</span><b>Vida compartida.</b> <span class="red">Rojo</span> = peligro · <span class="blue">azul</span> = refugio.</div>
+  </div>
+
+  <div class="controls">
+    <div class="ctl p1"><b>P1 · LAZO</b><span>W A S D</span><span>ESPACIO dash</span></div>
+    <div class="ctl p2"><b>P2 · BRASA</b><span>FLECHAS</span><span>ENTER dash</span></div>
+  </div>
+  <div id="bestTime" class="foot"></div>
+  <div id="padHint" class="foot"></div>
+  <div class="foot">Esc: pausa · <button id="musicBtn" class="link">♪ Música: sí (M)</button></div>
+</div>
+
+<!-- ============ MEJORA ============ -->
+<div id="upgradeScreen" class="screen hidden">
+  <h2>Elijan una mejora para la cadena</h2>
+  <div id="cards"></div>
+  <div class="foot">1 · 2 · 3 o click &nbsp;—&nbsp; <span id="upgradeNext"></span></div>
+</div>
+
+<!-- ============ PAUSA ============ -->
+<div id="pauseScreen" class="screen hidden">
+  <h2>PAUSA</h2>
+  <div class="controls">
+    <div class="ctl p1"><b>P1 · LAZO</b><span>W A S D</span><span>ESPACIO dash</span></div>
+    <div class="ctl p2"><b>P2 · BRASA</b><span>FLECHAS</span><span>ENTER dash</span></div>
+  </div>
+  <div class="menu">
+    <button id="resumeBtn" class="primary">▶ Seguir (Esc)</button>
+    <button id="pauseMenuBtn">☰ Volver al menú (Q)</button>
+  </div>
+</div>
+
+<!-- ============ FIN ============ -->
+<div id="endScreen" class="screen hidden">
+  <h2 id="endTitle">FIN</h2>
+  <div id="rank" class="rank">S</div>
+  <div id="endStats" class="stats"></div>
+  <div id="endTip" class="tip"></div>
+  <div class="menu row">
+    <button id="retryBtn" class="primary">↻ Reintentar jefe (Enter)</button>
+    <button id="menuBtn">☰ Menú</button>
+  </div>
+</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="src/core/config.js"></script>
+<script src="src/core/util.js"></script>
+<script src="src/core/input.js"></script>
+<script src="src/core/audio.js"></script>
+<script src="src/render/vfx.js"></script>
+<script src="src/render/telegraphs.js"></script>
+<script src="src/render/models.js"></script>
+<script src="src/render/arena.js"></script>
+<script src="src/gameplay/chain.js"></script>
+<script src="src/gameplay/player.js"></script>
+<script src="src/gameplay/projectiles.js"></script>
+<script src="src/gameplay/attacks.js"></script>
+<script src="src/gameplay/boss.js"></script>
+<script src="src/ui/hud.js"></script>
+<script src="src/game.js"></script>
+<script src="src/ui/devpanel.js"></script>
+</body>
+</html>
