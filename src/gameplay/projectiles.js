@@ -88,7 +88,7 @@ class Projectiles {
           if (d < b.radius + p.r) {
             const px = p.x, pz = p.z;
             this._kill(i); // primero sacarlo: el daño puede matar al jefe y vaciar la lista
-            const dealt = b.damage(9 * g.mods.damage, 'reflect');
+            const dealt = b.damage(CONFIG.chain.reflectDamage * g.mods.damage, 'reflect');
             VFX.number(px, 1.6, pz, Math.round(dealt), 'cool');
             VFX.impact(px, 1, pz, { color: 0xbff6ff, size: 0.8 });
           }

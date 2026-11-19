@@ -11,6 +11,7 @@ class Boss {
     this.maxHp = def.hp;
     this.hp = def.hp;
     this.model = Models[def.model]();
+    Models.outline(this.model.root, 1.06);
     scene.add(this.model.root);
     // sombra de contacto (sirve de guía cuando salta)
     this.shadow = new THREE.Mesh(
@@ -27,6 +28,7 @@ class Boss {
     this.anim = 'dormant';
     this.phase = 0;
     this.action = null;
+    this.intent = null;     // { def, targets:[bool,bool] } del ataque en curso (lectura en HUD)
     this.restT = 1;
     this.cd = new Map();
     this.lastAttack = null;
@@ -34,7 +36,7 @@ class Boss {
     this.moving = false; this.airborne = false; this.stunned = false; this.vuln = 1;
     this.slowT = 0; this.burnT = 0; this.burnAcc = 0; this.burnTick = 0;
     this.flashT = 0; this.zzzT = 1;
-    this.orbit = Math.random() * Math.PI * 2;
+    this.orbit = RNG.next() * Math.PI * 2;
     this.time = 0;
   }
 
@@ -61,15 +63,22 @@ class Boss {
   // ---------- daño ----------
   damage(amount, kind) {
     if (this.state !== 'fight' || this.airborne) return 0;
-    const mult = Math.max(this.stunned ? 1.3 : 1, this.vuln);
+    const mult = Rules.bossDamageMult(this.stunned, this.vuln, CONFIG.chain);
     const dealt = Math.min(this.hp, amount * mult);
     this.hp -= dealt;
     this.g.stats.damage += dealt;
     if (kind !== 'burn') this.flashT = kind === 'tajo' ? 0.14 : Math.max(this.flashT, 0.06);
-    const next = this.def.phases[this.phase + 1];
+    const next = Rules.nextPhase(this.def, this.phase, this.hp / this.maxHp);
     if (this.hp <= 0) this._die();
-    else if (next && this.hp / this.maxHp <= next.at) this._enterPhase(this.phase + 1);
+    else if (next >= 0) this._enterPhase(next);
     return dealt;
+  }
+
+  // ---------- lectura: a quién apunta el ataque en curso ----------
+  target(pl, only) {
+    if (!this.intent) return;
+    if (only) this.intent.targets[0] = this.intent.targets[1] = false;
+    this.intent.targets[pl.idx] = true;
   }
 
   cancelAction() {
@@ -78,6 +87,7 @@ class Boss {
       this.action = null;
       try { a.return(); } catch (e) { /* el generador estaba corriendo: queda descartado */ }
     }
+    this.intent = null;
     this.g.tele.clearOwner(this);
     for (const h of this.g.hazards) if (h.owner === this && h.cancel) h.cancel();
     this.airborne = false; this.y = 0; this.stunned = false; this.vuln = 1;
@@ -120,27 +130,15 @@ class Boss {
   // ---------- elección de ataque ----------
   _startAttack() {
     const ph = this.def.phases[this.phase];
-    const now = this.time;
-    let a = null;
-    if (!this.firstDone) { a = ph.attacks.find((q) => q.first) || null; this.firstDone = true; }
-    if (!a) {
-      const ready = (q) => (this.cd.get(q) || 0) <= now;
-      let list = ph.attacks.filter((q) => ready(q) && q !== this.lastAttack);
-      if (!list.length) list = ph.attacks.filter(ready);
-      if (!list.length) list = ph.attacks;
-      let total = 0;
-      for (const q of list) total += q.weight || 1;
-      let r = Math.random() * total;
-      for (const q of list) { r -= q.weight || 1; if (r <= 0) { a = q; break; } }
-      if (!a) a = list[list.length - 1];
-    }
-    this.lastAttack = a;
-    if (a.cooldown) this.cd.set(a, now + a.cooldown);
+    // 'this' guarda cd / lastAttack / firstDone: Rules.pickAttack los actualiza
+    const a = Rules.pickAttack(ph.attacks, this, this.time, () => RNG.next());
     if (a.hint) this.g.hintOnce(a.hint);
     if (a.type === 'combo') a.parts.forEach((pt) => { if (pt.hint) this.g.hintOnce(pt.hint); });
+    this.intent = { def: a, targets: [false, false] };
+    this.g.onBossAttack(a);
     this.action = Attacks[a.type](this, this.g, a);
     const r = this.action.next(0);
-    if (r.done) this.action = null;
+    if (r.done) { this.action = null; this.intent = null; }
   }
 
   moveToward(tx, tz, speed, dt) {
@@ -196,7 +194,7 @@ class Boss {
       this.burnTick -= dt;
       if (this.burnTick <= 0) {
         this.burnTick = 0.5;
-        if (this.burnAcc >= 1) VFX.number(this.x + U.rand(-0.8, 0.8), 2.4, this.z, Math.round(this.burnAcc), 'burn', 0.7);
+        if (this.burnAcc >= 1) VFX.number(this.x + (Math.random() - 0.5) * 1.6, 2.4, this.z, Math.round(this.burnAcc), 'burn', 0.7);
         this.burnAcc = 0;
         AudioFX.play('burn');
       }
@@ -220,6 +218,7 @@ class Boss {
           const r = this.action.next(sdt);
           if (r.done) {
             this.action = null;
+            this.intent = null;
             const rest = this.def.phases[this.phase].rest;
             this.restT = U.rand(rest[0], rest[1]);
             this.moving = false;
@@ -315,7 +314,7 @@ class Boss {
       VFX.parts.emit(this.x + Math.cos(a) * this.radius * 0.7, 3 + this.radius * 0.3, this.z + Math.sin(a) * this.radius * 0.7, 0, 0.5, 0, 0.4, 0.3, 0xfff2a0, { gravity: 0 });
     }
     if (this.burnT > 0 && Math.random() < 0.6) {
-      VFX.parts.emit(this.x + U.rand(-1, 1) * this.radius * 0.7, 0.8 + Math.random() * 1.5, this.z + U.rand(-1, 1) * this.radius * 0.7, 0, 2 + Math.random() * 2, 0, 0.45, 0.35, Math.random() < 0.5 ? 0xff7a2a : 0xffd04a, { gravity: 2 });
+      VFX.parts.emit(this.x + (Math.random() * 2 - 1) * this.radius * 0.7, 0.8 + Math.random() * 1.5, this.z + (Math.random() * 2 - 1) * this.radius * 0.7, 0, 2 + Math.random() * 2, 0, 0.45, 0.35, Math.random() < 0.5 ? 0xff7a2a : 0xffd04a, { gravity: 2 });
     }
     if (this.state === 'dormant') {
       this.zzzT -= dt;
@@ -327,11 +326,15 @@ class Boss {
     scene.remove(this.model.root);
     scene.remove(this.shadow);
     const shared = new Set(Models._lam.values());
+    const geometries = new Set();
+    const materials = new Set();
     this.model.root.traverse((o) => {
       if (!o.isMesh) return;
-      o.geometry.dispose();
-      if (!shared.has(o.material)) o.material.dispose();
+      geometries.add(o.geometry);
+      if (!shared.has(o.material)) materials.add(o.material);
     });
+    for (const geometry of geometries) geometry.dispose();
+    for (const material of materials) material.dispose();
     this.shadow.geometry.dispose();
     this.shadow.material.dispose();
   }

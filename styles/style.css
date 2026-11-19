@@ -7,8 +7,12 @@
   --purple: #c24dff;
   --orange: #ff8a3d;
   --ink: #f2efe8;
+  --yellow: #ffe14a;
   --panel: rgba(10, 10, 16, 0.62);
-  --font: 'Segoe UI', 'Trebuchet MS', system-ui, sans-serif;
+  /* Dirección "Forja nocturna": tipografía condensada del sistema (sin fuentes web),
+     paneles de tinta con borde de eslabón, luz solo donde hay juego. */
+  --font: 'Avenir Next Condensed', 'Arial Narrow', 'Roboto Condensed', 'Segoe UI', system-ui, sans-serif;
+  --ink-edge: rgba(242, 239, 232, 0.16);
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; color: var(--ink); font-family: var(--font); user-select: none; }
@@ -35,6 +39,20 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; c
 .num.word.good { color: #8dff9a; font-size: 22px; }
 .num.zzz { color: #c9d4ff; font-size: 18px; font-style: italic; opacity: .8; }
 
+/* ============ ETIQUETAS DE ROL (sobre cada jugador) ============ */
+#tags { position: fixed; inset: 0; pointer-events: none; z-index: 17; overflow: hidden; }
+.tag { position: absolute; left: 0; top: 0; padding: 3px 9px 2px; font-weight: 900; font-size: 13px; letter-spacing: 2px; white-space: nowrap;
+  color: #0b0b10; background: #f2efe8; border-radius: 3px; box-shadow: 0 2px 0 rgba(0,0,0,0.6); will-change: transform; }
+.tag::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: inherit; }
+.tag.p1 { border-top: 3px solid var(--p1); } .tag.p2 { border-top: 3px solid var(--p2); }
+.tag.danger { background: var(--red); color: #fff; animation: tagPulse .45s infinite alternate; }
+.tag.safe { background: var(--blue); color: #fff; }
+.tag.electric { background: var(--yellow); color: #1a1600; }
+.tag.anchor { background: var(--gold); color: #1a1200; }
+.tag.info { background: rgba(242,239,232,0.92); }
+.tag.boss { border-top: 3px solid #fff; font-size: 12px; }
+@keyframes tagPulse { to { transform-origin: center; filter: brightness(1.25); } }
+
 /* ============ HUD ============ */
 #hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; }
 
@@ -50,11 +68,47 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; c
 #bossStatus.good { color: #8dff9a; }
 #bossStatus.warn { color: #ffe14a; }
 
-#combo { transform-origin: left center; position: absolute; top: 84px; left: calc(50% - min(310px, 40vw)); font-weight: 900; font-size: 18px; letter-spacing: 2px;
+/* tarjeta AMENAZA: qué viene y qué hacer, con el color de la amenaza */
+#threat { display: flex; align-items: center; gap: 10px; margin: 8px auto 0; width: fit-content; max-width: 100%; padding: 6px 14px 6px 6px;
+  background: rgba(8,8,12,0.82); border: 1px solid var(--ink-edge); border-left: 6px solid var(--red); border-radius: 4px;
+  opacity: 0; transform: translateY(-6px); transition: opacity .15s, transform .15s; text-align: left; }
+#threat.on { opacity: 1; transform: none; }
+#threat.pop { animation: threatIn .3s ease-out; }
+#threat .tk { font-size: 10px; font-weight: 900; letter-spacing: 2px; padding: 3px 6px; border-radius: 2px; background: var(--red); color: #fff; }
+#threatLabel { font-size: 16px; letter-spacing: 2px; color: #fff; white-space: nowrap; }
+#threatAdvice { font-size: 13px; font-weight: 700; opacity: .88; }
+#threat.k-danger { border-left-color: var(--red); } #threat.k-danger .tk { background: var(--red); }
+#threat.k-safe { border-left-color: var(--blue); } #threat.k-safe .tk { background: var(--blue); }
+#threat.k-electric { border-left-color: var(--yellow); } #threat.k-electric .tk { background: var(--yellow); color: #1a1600; }
+#threat.k-anchor { border-left-color: var(--gold); } #threat.k-anchor .tk { background: var(--gold); color: #1a1200; }
+#threat.k-projectile { border-left-color: var(--orange); } #threat.k-projectile .tk { background: var(--orange); }
+#threat.k-pierce { border-left-color: var(--purple); } #threat.k-pierce .tk { background: var(--purple); }
+@keyframes threatIn { 0% { transform: scale(1.12); filter: brightness(1.8); } 100% { transform: none; } }
+
+/* medidor de BARRIDO: aporte de cada jugador a la cadena */
+#sweep { position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%); width: min(380px, 60vw); padding: 6px 10px 5px;
+  background: rgba(8,8,12,0.7); border: 1px solid var(--ink-edge); border-radius: 4px; transition: opacity .2s, border-color .15s; }
+#sweep.off { opacity: 0; }
+.sw-head { display: flex; align-items: baseline; gap: 8px; font-size: 12px; font-weight: 900; letter-spacing: 2px; }
+.sw-t { opacity: .55; }
+#swState { flex: 1; }
+#swMult { font-size: 16px; }
+.sw-bar { position: relative; height: 8px; margin: 4px 0 3px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; display: flex; }
+.sw-bar i { display: block; height: 100%; transition: width .08s linear; }
+.sw-p1 { background: var(--p1); box-shadow: 0 0 8px var(--p1); }
+.sw-p2 { background: var(--p2); box-shadow: 0 0 8px var(--p2); }
+.sw-foot { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; font-weight: 700; letter-spacing: 1px; opacity: .55; }
+.sw-foot .c1 { color: var(--p1); } .sw-foot .c2 { color: var(--p2); }
+#sweep.s-hit { border-color: #fff; } #sweep.s-hit #swState { color: #fff; }
+#sweep.s-aligned #swState { color: #8dff9a; } #sweep.s-aligned { border-color: rgba(141,255,154,0.6); }
+#sweep.s-electric { border-color: var(--yellow); } #sweep.s-electric #swState { color: var(--yellow); }
+#sweep.s-slack #swState { opacity: .6; }
+
+#combo { transform-origin: left center; position: absolute; top: calc(100% + 6px); left: 0; font-weight: 900; font-size: 18px; letter-spacing: 2px;
   color: #fff3c4; text-shadow: 0 2px 0 #000, 0 0 16px rgba(255,210,120,0.8); opacity: 0; transition: opacity .3s; }
 #combo b { font-size: 26px; color: #ffd34d; }
 #combo.pop { animation: pop .25s ease-out; }
-#charge { transform-origin: right center; position: absolute; top: 88px; right: calc(50% - min(310px, 40vw)); font-weight: 900; font-size: 15px; letter-spacing: 2px;
+#charge { transform-origin: right center; position: absolute; top: calc(100% + 6px); right: 0; font-weight: 900; font-size: 15px; letter-spacing: 2px;
   color: #ffe9a8; text-shadow: 0 2px 0 #000, 0 0 12px rgba(255,200,90,0.8); opacity: 0; transition: opacity .25s; }
 #charge.on { opacity: 1; }
 #charge b { color: #ffd36a; font-size: 19px; }
@@ -95,7 +149,7 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; c
 .dashbar div.ready { background: #fff; box-shadow: 0 0 8px #fff; }
 .p2 .dashbar { transform: scaleX(-1); }
 
-#hint { position: absolute; bottom: 92px; left: 50%; transform: translateX(-50%) translateY(10px); max-width: min(720px, 90vw);
+#hint { position: absolute; bottom: 168px; left: 50%; transform: translateX(-50%) translateY(10px); max-width: min(720px, 90vw);
   padding: 9px 18px; background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.18); border-radius: 10px;
   font-weight: 700; font-size: 16px; text-align: center; opacity: 0; transition: opacity .3s, transform .3s; }
 #hint.on { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -111,12 +165,14 @@ html, body { width: 100%; height: 100%; overflow: hidden; background: #050508; c
 #devPanel label { display: flex; flex-direction: column; gap: 2px; font-weight: 700; }
 #devPanel label span { color: #9f9; font-family: monospace; }
 #devPanel input { width: 100%; }
+#devPanel label.dvchk { flex-direction: row; align-items: center; gap: 6px; font-weight: 600; }
+#devPanel label.dvchk input { width: auto; }
 #devPanel button { padding: 6px; font-weight: 900; cursor: pointer; border-radius: 6px; border: none; }
 #devPanel #dvMsg { white-space: pre; font-family: monospace; font-size: 10px; color: #9f9; }
 #devInfo { position: fixed; top: 6px; right: 8px; z-index: 40; font: 11px monospace; color: #9f9; text-shadow: 0 1px 1px #000; pointer-events: none; }
 
 /* ============ PANTALLAS ============ */
-.screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: center;
+.screen { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; align-items: center; justify-content: safe center;
   gap: 16px; padding: 24px; overflow-y: auto; }
 #title { background: radial-gradient(ellipse at 50% 40%, rgba(10,6,4,0.25), rgba(4,3,6,0.82) 75%); }
 #upgradeScreen, #pauseScreen, #endScreen { background: rgba(5,4,8,0.72); backdrop-filter: blur(3px); }
@@ -189,4 +245,27 @@ button.link { background: none; border: none; color: inherit; font: inherit; tex
   .howto { grid-template-columns: 1fr; }
   .pcard { width: 150px; }
   .menu { min-width: 0; width: 100%; }
+}
+
+/* ============ FORJA NOCTURNA (identidad del remake) ============
+   Paneles de tinta rectos con canto claro, títulos con trazo grueso,
+   el degradado celeste→naranjo (los dos jugadores) como única firma de color propio. */
+#links, .pcard, #hint, .menu button, .pbtn, .howto, .ctl, .card, .stats { border-radius: 4px; }
+.pcard, #links, .howto, .ctl, .stats { border-color: var(--ink-edge); background: rgba(8,8,12,0.74); }
+#bossBar { border-radius: 2px; height: 14px; border-color: var(--ink-edge); }
+#bossName { letter-spacing: 5px; }
+.menu button.primary { position: relative; }
+.menu button.primary::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+  background: linear-gradient(90deg, var(--p1), var(--p2)); }
+.howto { border-top: 3px solid; border-image: linear-gradient(90deg, var(--p1), var(--p2)) 1; }
+.tagline { text-transform: uppercase; font-size: 15px; letter-spacing: 5px; }
+h2 { letter-spacing: 5px; }
+#vignette { background: radial-gradient(ellipse at 50% 55%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.62) 100%); }
+@media (max-height: 760px) { #sweep { bottom: 84px; } #hint { bottom: 156px; } }
+/* el botón de música compartía la clase .link con los eslabones de la vida: se veía como una cajita */
+button.link { width: auto; height: auto; border: none; border-radius: 0; box-shadow: none; margin: 0; }
+
+@media (max-width: 720px) {
+  #threat { flex-wrap: wrap; }
+  #threatLabel { white-space: normal; }
 }

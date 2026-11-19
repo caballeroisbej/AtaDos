@@ -11,6 +11,7 @@ class Player {
     this.name = idx === 0 ? 'LAZO' : 'BRASA';
     this.radius = CONFIG.player.radius;
     this.model = Models.player(this.color, idx);
+    Models.outline(this.model.root, 1.1);
     this.model.root.scale.setScalar(this.radius / 0.5);
     scene.add(this.model.root);
 

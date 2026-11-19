@@ -41,6 +41,24 @@ const CONFIG = {
     dasherWeight: 0.3,     // quien hace dash arrastra al compañero (0 = lo arrastra entero)
     tickInterval: 0.13,    // cada cuánto se muestran los números de daño
     yankSpeed: 9,          // tirón fuerte: muestra "¡TIRÓN!"
+    yankCooldown: 0.6,     // mínimo entre avisos de tirón
+    stunMult: 1.3,         // daño extra con el jefe aturdido (+30%)
+    zapCooldown: 1.1,      // cadena electrificada tocando al jefe: un golpe cada X s
+    zapKnock: 8,           // empuje de la descarga
+    reflectDamage: 9,      // "Cadena espejo": daño de cada proyectil rebotado
+  },
+
+  input: {
+    dashBuffer: 0.14,      // un dash apretado un poco antes de poder hacerlo igual sale
+  },
+
+  // Lectura en pantalla (se puede apagar cada ayuda para comparar en playtest)
+  ui: {
+    roleTags: true,        // etiquetas sobre cada jugador: QUIETO / ATACA / AL AZUL / ¡A TI!
+    targetMarkers: true,   // marca roja en el piso bajo el jugador apuntado
+    floorTether: true,     // sombra de la cadena en el piso, coloreada por su estado
+    threatCard: true,      // tarjeta "AMENAZA" bajo la barra del jefe
+    sweepMeter: true,      // medidor de BARRIDO: cuánto aporta cada jugador
   },
 
   team: {
@@ -202,6 +220,27 @@ const CONFIG = {
     { id: 'vampiro', icon: '🩸', name: 'Tajo vampírico', desc: 'Cada 4 TAJOS recuperan 1 eslabón de vida.',
       apply: (m) => { m.vamp = 4; } },
   ],
+
+  // ----------------------------------------------------------
+  // LECTURA DE ATAQUES — lo que muestra la tarjeta AMENAZA.
+  // kind usa el código de colores: danger (rojo), safe (azul), electric (amarillo),
+  // anchor (dorado), projectile (naranjo, se bloquea), pierce (morado, atraviesa).
+  // ----------------------------------------------------------
+  attackInfo: {
+    charge: { label: 'EMBESTIDA', kind: 'danger', advice: 'Salgan del carril rojo y dejen la cadena cruzada: se corta solo.' },
+    ring: { label: 'ANILLO', kind: 'projectile', advice: 'Cadena tensa frente a los naranjos: bloquea y CARGA el TAJO.',
+      advicePierce: 'Bloqueen los naranjos; los MORADOS atraviesan: esquívenlos.' },
+    volley: { label: 'RÁFAGA', kind: 'projectile', advice: 'El apuntado se esconde detrás de la cadena.',
+      advicePierce: 'MORADOS: atraviesan la cadena. Muévanse de la línea.' },
+    jumpSplit: { label: 'CAÍDA', kind: 'danger', advice: 'Cae entre ustedes: sepárense hacia lados opuestos.' },
+    jumpTogether: { label: 'TERREMOTO', kind: 'safe', advice: 'Los dos dentro del círculo azul antes del golpe.' },
+    swipe: { label: 'ZARPAZO', kind: 'danger', advice: 'Salgan del cono; el otro aprovecha y barre.' },
+    shockwave: { label: 'ONDA', kind: 'danger', advice: 'Dash a través del anillo rojo justo cuando llega.' },
+    electrify: { label: 'CADENA ELÉCTRICA', kind: 'electric', advice: 'No toquen al jefe con la cadena mientras brille amarilla.' },
+    anchor: { label: 'ANCLA', kind: 'anchor', advice: 'Uno QUIETO en el círculo dorado; el otro gira y lo protege.' },
+    spiral: { label: 'ESPIRAL', kind: 'projectile', advice: 'Giren la cadena con la espiral para bloquear.' },
+    lightning: { label: 'RAYOS', kind: 'electric', advice: 'Los círculos siguen a cada uno: muévanse antes de que caigan.' },
+  },
 
   // Colores de lectura (no cambiar sin pensarlo: rojo = peligro, azul = seguro)
   colors: {

@@ -24,12 +24,18 @@ const DevPanel = {
       this.fields.map(([label, path, min, max, step], i) =>
         `<label>${label} <span id="dv${i}"></span><input type="range" min="${min}" max="${max}" step="${step}" data-i="${i}"></label>`).join('') +
       '<label>Vida del jefe actual <span id="dvhp"></span><input type="range" min="50" max="5000" step="50" id="dvhpIn"></label>' +
+      '<b>AYUDAS DE LECTURA</b>' +
+      Object.keys(CONFIG.ui).map((k) => `<label class="dvchk"><input type="checkbox" data-ui="${k}" ${CONFIG.ui[k] ? 'checked' : ''}> ${k}</label>`).join('') +
       '<button id="dvCopy">Copiar valores</button><div id="dvMsg"></div>';
     document.body.appendChild(el);
     el.querySelectorAll('input[data-i]').forEach((inp) => {
       const f = this.fields[+inp.dataset.i];
       inp.value = this.get(f[1]);
       inp.addEventListener('input', () => { this.set(f[1], parseFloat(inp.value)); this.refresh(); });
+    });
+    // apagar/prender cada ayuda para comparar en playtest (CONFIG.ui)
+    el.querySelectorAll('input[data-ui]').forEach((inp) => {
+      inp.addEventListener('change', () => { CONFIG.ui[inp.dataset.ui] = inp.checked; inp.blur(); });
     });
     document.getElementById('dvhpIn').addEventListener('input', (e) => {
       const b = Game.boss; if (!b) return;
@@ -62,6 +68,7 @@ const DevPanel = {
   copy() {
     const lines = this.fields.map(([label, path]) => `${path}: ${this.get(path)}`);
     CONFIG.bosses.forEach((b) => lines.push(`${b.id}.hp: ${b.hp}`));
+    Object.keys(CONFIG.ui).forEach((k) => lines.push(`ui.${k}: ${CONFIG.ui[k]}`));
     const txt = lines.join('\n');
     const msg = document.getElementById('dvMsg');
     const done = () => { msg.textContent = 'Copiado. Pégalo y pásalo a config.js'; };

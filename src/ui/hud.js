@@ -11,9 +11,56 @@ const HUD = {
       combo: $('combo'), hint: $('hint'), banner: $('banner'), bannerBig: $('bannerBig'), bannerSmall: $('bannerSmall'),
       lifePanel: $('lifePanel'), status: $('bossStatus'), charge: $('charge'),
     };
+    this.el.threat = $('threat'); this.el.threatLabel = $('threatLabel'); this.el.threatAdvice = $('threatAdvice');
+    this.el.sweep = $('sweep'); this.el.swP1 = $('swP1'); this.el.swP2 = $('swP2'); this.el.swState = $('swState'); this.el.swMult = $('swMult');
     this.ghost = 1;
     this.hintT = 0; this.bannerT = 0; this.comboT = 0;
     this._maxLinks = -1;
+    this._threatKey = null; this._swKey = null; this._swState = null;
+  },
+
+  // tarjeta AMENAZA: qué ataque viene y qué hacer (t = Rules.threat(...) o null)
+  threat(t) {
+    const key = t ? t.kind + '|' + t.label : '';
+    if (key === this._threatKey) return;
+    this._threatKey = key;
+    const el = this.el.threat;
+    if (!t) { el.classList.remove('on'); return; }
+    el.className = 'on k-' + t.kind;
+    this.el.threatLabel.textContent = t.label;
+    this.el.threatAdvice.textContent = t.advice;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+  },
+
+  // medidor de BARRIDO: cuánto barre cada jugador y en qué estado está la cadena
+  sweep(co, chain) {
+    const el = this.el.sweep;
+    if (!co) { if (this._swKey !== 'off') { this._swKey = 'off'; el.classList.add('off'); } return; }
+    if (this._swKey === 'off') el.classList.remove('off');
+    const C = CONFIG.chain;
+    const live = chain.contact ? chain.mult : co.power;
+    const total = U.clamp(live / C.maxMult, 0, 1) * 100;
+    const p1 = total * co.share, p2 = total - p1;
+    const key = p1.toFixed(0) + '|' + p2.toFixed(0) + '|' + live.toFixed(1);
+    if (key !== this._swKey) {
+      this._swKey = key;
+      this.el.swP1.style.width = p1.toFixed(1) + '%';
+      this.el.swP2.style.width = p2.toFixed(1) + '%';
+      this.el.swMult.textContent = 'x' + live.toFixed(1);
+    }
+    let st, cls;
+    if (chain.electrified) { st = '⚡ NO TOCAR AL JEFE'; cls = 'electric'; }
+    else if (chain.warning) { st = '⚡ SE VA A ELECTRIFICAR'; cls = 'electric'; }
+    else if (chain.contact) { st = 'GOLPEANDO'; cls = 'hit'; }
+    else if (co.aligned) { st = 'ALINEADOS · ¡CRÚCENLO!'; cls = 'aligned'; }
+    else if (co.tension > 0.92) { st = 'TENSA'; cls = 'taut'; }
+    else if (co.tension < 0.2) { st = 'FLOJA · sepárense'; cls = 'slack'; }
+    else { st = 'LISTA'; cls = ''; }
+    if (st !== this._swState) {
+      this._swState = st;
+      this.el.swState.textContent = st;
+      el.className = cls ? 's-' + cls : '';
+    }
   },
 
   show(v) { this.el.hud.classList.toggle('hidden', !v); },

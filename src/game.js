@@ -21,7 +21,12 @@ const Game = {
   bossIndex: 0,
   taken: [],
 
+  // ?seed=N fija el azar del gameplay; ?manual detiene el loop automático (lo avanzan las pruebas con step)
+  manual: /[?&]manual/.test(location.search),
+
   init() {
+    const sm = /[?&]seed=(\d+)/.exec(location.search);
+    if (sm) RNG.seed(parseInt(sm[1], 10));
     const canvas = document.getElementById('game');
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
@@ -34,6 +39,7 @@ const Game = {
 
     Arena.build(this.scene, this.arenaR);
     VFX.init(this.scene, this.camera);
+    Readability.init(this.scene, this.camera);
     this.tele = new Telegraphs(this.scene);
     this.mods = this.defaultMods();
     this.team = { links: CONFIG.team.links, maxLinks: CONFIG.team.links };
@@ -70,7 +76,7 @@ const Game = {
   },
   pickPlayer(mode, boss) {
     const [a, b] = this.players;
-    if (mode === 'random') return Math.random() < 0.5 ? a : b;
+    if (mode === 'random') return RNG.next() < 0.5 ? a : b;
     const da = (a.x - boss.x) ** 2 + (a.z - boss.z) ** 2;
     const db = (b.x - boss.x) ** 2 + (b.z - boss.z) ** 2;
     if (mode === 'farthest') return da > db ? a : b;
@@ -100,16 +106,14 @@ const Game = {
     VFX.flash('rgba(255,40,40,1)', 0.32);
     VFX.shake(0.45, 0.3);
     if (this.godMode) return;
-    this.team.links = Math.max(0, this.team.links - n);
+    const dead = Rules.damageTeam(this.team, n, false);
     this.stats.hits++;
     this.stats.linksLost += n;
     HUD.links(true);
-    if (this.team.links <= 0) this.defeat();
+    if (dead) this.defeat();
   },
   healTeam(n) {
-    const before = this.team.links;
-    this.team.links = Math.min(this.team.maxLinks, this.team.links + n);
-    if (this.team.links > before) {
+    if (Rules.healTeam(this.team, n) > 0) {
       AudioFX.play('heal');
       for (const p of this.players) VFX.number(p.x, 2.3, p.z, '+' + n, 'heal');
       HUD.links(false);
@@ -117,8 +121,19 @@ const Game = {
   },
 
   // ---------- flujo ----------
+  // Todo cambio de estado pasa por aquí y respeta la tabla de Flow (src/core/flow.js).
+  setState(to) {
+    if (this.state === to) return true;
+    if (!Flow.canGo(this.state, to)) {
+      console.warn('[flow] transición inválida ' + this.state + ' -> ' + to);
+      return false;
+    }
+    this.state = to;
+    return true;
+  },
+
   showTitle() {
-    this.state = 'title';
+    if (!this.setState('title')) return;
     this.bossIndex = 0;
     this.mods = this.defaultMods();
     this.setupBoss(0);
@@ -138,6 +153,7 @@ const Game = {
   },
 
   startRun(mode, bossIndex, practice) {
+    if (!Flow.canGo(this.state, 'playing')) return;
     AudioFX.init();
     AudioFX.play('select');
     this.mode = mode;
@@ -158,7 +174,7 @@ const Game = {
     this.setupBoss(bossIndex);
     this.showScreen(null);
     HUD.show(true);
-    this.state = 'playing';
+    this.setState('playing');
     Input.clearPressed();
     HUD.hint('Pasen la CADENA a través del jefe para despertarlo.', 6);
   },
@@ -173,6 +189,7 @@ const Game = {
     this.projectiles.clear();
     this.tele.clearAll();
     VFX.clear();
+    Readability.clear();
     this.chain.reset();
     Arena.setTheme(def.theme);
     this.boss = new Boss(def, this, this.scene);
@@ -189,6 +206,12 @@ const Game = {
     HUD.links(false);
     HUD.clearHint();
     if (this.state !== 'title') AudioFX.music('menu');
+  },
+
+  // el jefe eligió un ataque: aviso sonoro distinto si apunta a alguien en particular
+  onBossAttack(a) {
+    const info = CONFIG.attackInfo[a.type === 'combo' ? a.parts[0].type : a.type];
+    AudioFX.play('alert', { kind: info ? info.kind : 'danger' });
   },
 
   onBossWake() {
@@ -215,7 +238,7 @@ const Game = {
   },
 
   showUpgrade() {
-    this.state = 'upgrade';
+    if (!this.setState('upgrade')) return;
     AudioFX.setChain(0, false, false);
     const pool = U.shuffle(CONFIG.upgrades.filter((u) => !this.taken.includes(u)));
     this.offer = pool.slice(0, 3);
@@ -233,7 +256,7 @@ const Game = {
     this.markOffer();
     document.getElementById('upgradeNext').textContent = 'Siguiente: ' + CONFIG.bosses[this.bossIndex + 1].name;
     this.showScreen('upgradeScreen');
-    this.inputLockUntil = performance.now() + 700;
+    this.inputLockUntil = Clock.now() + 700;
     AudioFX.music('menu');
     AudioFX.play('upgrade');
   },
@@ -254,7 +277,7 @@ const Game = {
     HUD.setMods(this.taken);
     this.showScreen(null);
     this.setupBoss(this.bossIndex + 1);
-    this.state = 'playing';
+    this.setState('playing');
     Input.clearPressed();
     HUD.show(true);
     this.banner(u.icon + ' ' + u.name, 'Siguiente: ' + this.boss.def.name, 2.2);
@@ -263,7 +286,7 @@ const Game = {
 
   defeat() {
     if (this.state !== 'playing') return;
-    this.state = 'defeat';
+    this.setState('defeat');
     AudioFX.play('defeat');
     AudioFX.music('menu');
     AudioFX.setChain(0, false, false);
@@ -282,7 +305,7 @@ const Game = {
     document.getElementById('retryBtn').style.display = '';
     document.getElementById('retryBtn').textContent = '↻ Reintentar jefe (Enter)';
     this.endSel = 0;
-    this.inputLockUntil = performance.now() + 1500;
+    this.inputLockUntil = Clock.now() + 1500;
     setTimeout(() => { if (this.state === 'defeat') this.showScreen('endScreen'); }, 900);
   },
 
@@ -296,27 +319,27 @@ const Game = {
   },
 
   retry() {
-    if (this.state !== 'defeat') return;
+    if (this.state !== 'defeat' && this.state !== 'paused') return;
     this.stats.retries++;
     this.showScreen(null);
     this.setupBoss(this.bossIndex);
-    this.state = 'playing';
+    this.setState('playing');
     Input.clearPressed();
     HUD.show(true);
+    this._last = performance.now();
     HUD.hint('Pasen la cadena por el jefe para empezar.', 4);
   },
+  // desde la pausa: volver a empezar el jefe actual (cuenta como reintento)
+  restart() { if (this.state === 'paused') this.retry(); },
 
   victory() {
-    this.state = 'victory';
+    if (!this.setState('victory')) return;
     AudioFX.play('victory');
     AudioFX.music('menu');
     AudioFX.setChain(0, false, false);
     const s = this.stats;
     const total = s.bossTimes.reduce((a, b) => a + b, 0);
-    let rank = 'C';
-    if (s.retries === 0 && s.hits <= 3) rank = 'S';
-    else if (s.retries === 0) rank = 'A';
-    else if (s.retries <= 2) rank = 'B';
+    const rank = Rules.rank(s);
     let best = null;
     const key = 'atados_best_' + this.mode;
     if (!this.practice && !this.dev) {
@@ -342,7 +365,7 @@ const Game = {
     document.getElementById('endTip').textContent = this.mode === 'solo' ? '¡Manejaste dos personajes a la vez! Prueben ahora en 2 jugadores.' : 'Gracias por jugar. Prueben en modo 1 jugador: un control, dos sticks.';
     document.getElementById('retryBtn').style.display = 'none';
     this.endSel = 1;
-    this.inputLockUntil = performance.now() + 1900;
+    this.inputLockUntil = Clock.now() + 1900;
     setTimeout(() => { if (this.state === 'victory') this.showScreen('endScreen'); }, 1200);
   },
 
@@ -352,13 +375,13 @@ const Game = {
 
   pause() {
     if (this.state !== 'playing') return;
-    this.state = 'paused';
+    this.setState('paused');
     AudioFX.setChain(0, false, false);
     this.showScreen('pauseScreen');
   },
   resume() {
     if (this.state !== 'paused') return;
-    this.state = 'playing';
+    this.setState('playing');
     Input.clearPressed();
     this.showScreen(null);
     this._last = performance.now();
@@ -381,6 +404,7 @@ const Game = {
     on('btnPractice', () => { document.getElementById('practiceRow').classList.toggle('hidden'); AudioFX.play('ui'); });
     on('resumeBtn', () => this.resume());
     on('pauseMenuBtn', () => this.toMenu());
+    on('restartBtn', () => this.restart());
     on('retryBtn', () => this.retry());
     on('menuBtn', () => this.toMenu());
     on('musicBtn', () => this.toggleMusic());
@@ -418,67 +442,43 @@ const Game = {
 
   // evita elegir mejora / reintentar sin querer por estar apretando dash
   locked() {
-    return (this.state === 'upgrade' || this.state === 'defeat' || this.state === 'victory') && performance.now() < this.inputLockUntil;
+    return Flow.lockable.includes(this.state) && Clock.now() < this.inputLockUntil;
   },
   inputLockUntil: 0,
+
+  // ejecuta una acción de Flow.keyAction / Flow.padAction
+  act(a) {
+    if (!a) return;
+    switch (a) {
+      case 'music': this.toggleMusic(); break;
+      case 'coop': this.startRun('coop', 0); break;
+      case 'solo': this.startRun('solo', 0); break;
+      case 'pause': this.pause(); break;
+      case 'resume': this.resume(); break;
+      case 'restart': this.restart(); break;
+      case 'retry': this.retry(); break;
+      case 'menu': this.toMenu(); break;
+      case 'sel:-1': this.offerSel = (this.offerSel + 2) % 3; this.markOffer(); break;
+      case 'sel:1': this.offerSel = (this.offerSel + 1) % 3; this.markOffer(); break;
+      case 'pick:sel': this.pickUpgrade(this.offerSel); break;
+      default:
+        if (a.startsWith('pick:')) this.pickUpgrade(parseInt(a.slice(5), 10));
+    }
+  },
 
   onKey(e) {
     AudioFX.init();
     if (e.repeat) return;
-    const c = e.code;
-    if (c === 'KeyM') { this.toggleMusic(); return; }
-    if (this.dev) this.devKey(c);
-    if (this.locked()) return;
-    switch (this.state) {
-      case 'title':
-        if (c === 'Digit1' || c === 'Numpad1') this.startRun('coop', 0);
-        else if (c === 'Digit2' || c === 'Numpad2') this.startRun('solo', 0);
-        break;
-      case 'playing':
-        if (c === 'Escape' || c === 'KeyP') this.pause();
-        break;
-      case 'paused':
-        if (c === 'Escape' || c === 'KeyP' || c === 'Enter' || c === 'Space') this.resume();
-        else if (c === 'KeyQ') this.toMenu();
-        break;
-      case 'upgrade':
-        if (c === 'Digit1' || c === 'Numpad1') this.pickUpgrade(0);
-        else if (c === 'Digit2' || c === 'Numpad2') this.pickUpgrade(1);
-        else if (c === 'Digit3' || c === 'Numpad3') this.pickUpgrade(2);
-        else if (c === 'ArrowLeft' || c === 'KeyA') { this.offerSel = (this.offerSel + 2) % 3; this.markOffer(); }
-        else if (c === 'ArrowRight' || c === 'KeyD') { this.offerSel = (this.offerSel + 1) % 3; this.markOffer(); }
-        else if (c === 'Enter' || c === 'Space') this.pickUpgrade(this.offerSel);
-        break;
-      case 'defeat':
-        if (c === 'Enter' || c === 'KeyR' || c === 'Space') this.retry();
-        else if (c === 'Escape') this.toMenu();
-        break;
-      case 'victory':
-        if (c === 'Enter' || c === 'Escape' || c === 'Space') this.toMenu();
-        break;
-    }
+    if (this.dev) this.devKey(e.code);
+    this.act(Flow.keyAction(this.state, e.code, this.locked()));
   },
 
   padMenu() {
-    if (this.state === 'title' && (Input.padPressedAny(0, [2]) || Input.padPressedAny(1, [2]))) { this.startRun('solo', 0); return; }
-    const a = Input.menuAction();
+    let a = Input.menuAction();
+    if (this.state === 'title' && (Input.padPressedAny(0, [2]) || Input.padPressedAny(1, [2]))) a = 'x';
     if (!a) return;
     AudioFX.init();
-    if (this.locked()) return;
-    switch (this.state) {
-      case 'title':
-        if (a === 'confirm' || a === 'start') this.startRun('coop', 0);
-        break;
-      case 'playing': if (a === 'start') this.pause(); break;
-      case 'paused': if (a === 'start' || a === 'confirm') this.resume(); else if (a === 'back') this.toMenu(); break;
-      case 'upgrade':
-        if (a === 'left') { this.offerSel = (this.offerSel + 2) % 3; this.markOffer(); }
-        else if (a === 'right') { this.offerSel = (this.offerSel + 1) % 3; this.markOffer(); }
-        else if (a === 'confirm') this.pickUpgrade(this.offerSel);
-        break;
-      case 'defeat': if (a === 'confirm' || a === 'start') this.retry(); else if (a === 'back') this.toMenu(); break;
-      case 'victory': if (a === 'confirm' || a === 'start') this.toMenu(); break;
-    }
+    this.act(Flow.padAction(this.state, a, this.locked()));
   },
 
   devKey(c) {
@@ -503,15 +503,37 @@ const Game = {
     requestAnimationFrame((t) => this.loop(t));
     let realDt = (now - this._last) / 1000;
     this._last = now;
+    if (this.manual) return;
     if (!(realDt > 0)) realDt = 0;
     realDt = Math.min(realDt, 0.05);
+    this._safeFrame(realDt);
+  },
+  _safeFrame(dt) {
     try {
-      this.frame(realDt);
+      this.frame(dt);
     } catch (err) {
       // nunca dejar el juego congelado por un error: se registra y se sigue
       console.error(err);
       this.lastError = err;
     }
+  },
+
+  // ---------- ganchos de prueba (los usa scripts/smoke.js) ----------
+  // avanza n frames de dt segundos sin depender del reloj real
+  step(n, dt) { for (let i = 0; i < (n || 1); i++) this._safeFrame(dt || 1 / 60); },
+  snapshot() {
+    const b = this.boss, [p, q] = this.players;
+    return {
+      state: this.state, mode: this.mode, bossIndex: this.bossIndex, practice: !!this.practice,
+      boss: b ? { id: b.def.id, state: b.state, x: b.x, z: b.z, hp: b.hp, maxHp: b.maxHp, phase: b.phase, attack: b.intent ? b.intent.def.type : null } : null,
+      players: [{ x: p.x, z: p.z, dashCd: p.dashCd }, { x: q.x, z: q.z, dashCd: q.dashCd }],
+      chain: { len: this.chain.len, contact: this.chain.contact, tajos: this.chain.tajos, charge: this.chain.charge },
+      team: { links: this.team.links, maxLinks: this.team.maxLinks },
+      stats: { retries: this.stats.retries, tajos: this.stats.tajos, dashes: this.stats.dashes },
+      screen: [...document.querySelectorAll('.screen')].filter((s) => !s.classList.contains('hidden')).map((s) => s.id)[0] || null,
+      threat: Readability.lastThreat, roles: Readability._roles.slice(),
+      lastError: this.lastError ? String(this.lastError) : null,
+    };
   },
 
   frame(realDt) {
@@ -534,7 +556,7 @@ const Game = {
       if (this.bot) this.bot(this, this.intents);
       for (let i = 0; i < 2; i++) {
         this.dashBuf[i] = Math.max(0, this.dashBuf[i] - realDt);
-        if (this.intents[i].dash) this.dashBuf[i] = 0.14;
+        if (this.intents[i].dash) this.dashBuf[i] = CONFIG.input.dashBuffer;
       }
       if (this.hitstop > 0) this.hitstop -= realDt;
       else { simDt = dt; this.simulate(dt); }
@@ -556,9 +578,11 @@ const Game = {
     if (this.boss) this.boss.render(this.state === 'paused' ? 0 : dt, this.time);
     this.chain.render(this.time);
     this.projectiles.render();
+    Readability.update(this, this.state === 'paused' ? 0 : realDt, this.time);
     this.updateCamera(realDt);
     this.renderer.render(this.scene, this.camera);
     VFX.updateNumbers(this.state === 'paused' ? 0 : realDt, this.W, this.H);
+    Readability.place(this.W, this.H);
     HUD.update(realDt);
     Input.endFrame();
 

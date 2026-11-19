@@ -9,8 +9,27 @@ hay que separarse, juntarse y coordinarse contra sus mecánicas.
 
 ## Cómo correrlo
 
-Doble click en `index.html`. No necesita instalación ni internet: three.js
-viene incluido en `js/`. Funciona en Chrome, Edge y Firefox.
+Doble click en `index.html`. No necesita instalación, servidor ni internet:
+three.js r128 viene incluido en `vendor/`. Funciona en Chrome, Edge y Firefox.
+
+Parámetros opcionales en la URL: `?dev` (panel de ajuste, F1), `?seed=123`
+(fija el azar de los jefes para reproducir una pelea), `?manual` (el loop no
+avanza solo; lo usan las pruebas).
+
+## Cómo validar
+
+Requiere Node ≥ 22 (sin `npm install`: no hay dependencias).
+
+| Comando | Qué hace |
+|---|---|
+| `npm run check` | Sintaxis de `src/`, `tests/` y `scripts/`; que `index.html` cargue todo `src/` en orden y sin ES modules. |
+| `npm test` | Pruebas de reglas en Node (`node --test`): cadena, TAJO, bloqueo, vida, fases, elección de ataques con semilla, lectura de amenazas y roles, tabla de estados, teclas y menús, y todos los ataques reales terminando y cancelándose con limpieza. |
+| `npm run smoke` | Abre `index.html` por **file://** en Chrome headless local y juega el flujo con teclas reales (2 jugadores a la vez, dash, pausa/reanudar, despertar al jefe, amenaza visible, reinicio, derrota y reintento, mejora, menú, música, modo 1 jugador, práctica, panel `?dev`, determinismo con semilla). Falla ante errores de consola o cualquier pedido de red. Deja capturas y `smoke.json` en `test-results/`. Si no encuentra Chrome sale con código 2 y lo dice (define `CHROME=/ruta`). |
+| `npm run verify` | Los tres seguidos. |
+
+Esto NO reemplaza jugarlo: el playtest con dos personas (sensación de la
+cadena, legibilidad real, dificultad, controles físicos) se anota aparte en
+`docs/ITERACIONES.md`.
 
 ## Controles
 
@@ -23,6 +42,8 @@ viene incluido en `js/`. Funciona en Chrome, Edge y Firefox.
   2 jugadores, el control es de P2. En modo **1 jugador**, un control maneja a
   los dos: stick izquierdo + LB/LT = P1, stick derecho + RB/RT = P2.
 - **Esc / P:** pausa · **M:** música · En el título: **1** = 2 jugadores, **2** = 1 jugador.
+- **En pausa:** Esc / Enter sigue · **R** reinicia el jefe actual · **Q** vuelve al menú.
+- **Al perder:** Enter / R reintenta el mismo jefe · Esc vuelve al menú.
 
 ## Cómo se juega
 
@@ -39,6 +60,29 @@ viene incluido en `js/`. Funciona en Chrome, Edge y Firefox.
   hace dash pesa más: sirve para sacar al otro de un peligro.
 - Cada jefe **duerme** hasta que la cadena lo atraviesa: así se aprende la
   mecánica sin presión.
+
+### Leer la pelea (remake "Forja nocturna")
+
+- **AMENAZA:** bajo la barra del jefe, una tarjeta con el color de la amenaza
+  dice qué ataque viene y qué hacer (rojo peligro, azul refugio, amarillo
+  eléctrico, dorado ancla, naranjo bloqueable, morado atraviesa). Un aro del
+  mismo color rodea al jefe mientras ataca, y cada tipo tiene su timbre.
+- **¡A TI!:** una marca roja en el piso y una etiqueta sobre la cabeza señalan
+  al jugador apuntado (embestida, ráfaga, zarpazo, rayos).
+- **Roles:** sobre cada jugador aparece lo que le toca: `QUIETO` / `AL DORADO`
+  y `ATACA` en el ancla, `AL AZUL` en el terremoto, `SEPÁRENSE` en la caída,
+  `DASH` en la onda, `LEJOS` con la cadena eléctrica.
+- **BARRIDO:** el medidor sobre la vida muestra cuánto barre cada uno (celeste
+  y naranjo), el multiplicador y el estado de la cadena: FLOJA, TENSA,
+  ALINEADOS · ¡CRÚCENLO!, GOLPEANDO o ⚡ NO TOCAR.
+- La **sombra de la cadena** en el piso se engrosa al tensarse, se pone dorada
+  con carga, amarilla al electrificarse y blanca mientras golpea.
+- Cada ayuda se puede apagar en `config.js` (`ui`) o en vivo con `?dev` + F1.
+
+Dirección visual: siluetas con contorno de tinta, pizarra oscura de bajo
+contraste y luz solo donde hay juego (cadena, avisos, jugadores); el
+degradado celeste→naranjo de los dos jugadores es la única firma de color
+propia. Todo por primitivas y código, sin assets externos.
 
 ### Los jefes
 
@@ -73,21 +117,29 @@ activa F2 (modo dios), F3 (despertar / matar al jefe) y F4 (quitarle 25%).
 ## Estructura
 
 ```
-index.html, style.css   pantallas y HUD
-js/config.js            todos los números del juego
-js/game.js              loop, estados, cámara y flujo entre jefes
-js/chain.js             la cadena: restricción, daño, TAJO, carga, electrificada
-js/player.js            movimiento con aceleración, dash, anillo de recarga
-js/boss.js              máquina de estados del jefe y elección de ataques
-js/attacks.js           bloques de ataque (generadores) y peligros persistentes
-js/telegraphs.js        avisos en el suelo
-js/projectiles.js       proyectiles con InstancedMesh
-js/models.js            jugadores y jefes hechos con primitivas
-js/arena.js             isla flotante y temas por jefe
-js/vfx.js               partículas, anillos, estelas, temblor, números
-js/audio.js             efectos y música sintetizados (WebAudio)
-js/input.js             teclado compartido y controles
-js/hud.js               interfaz
+index.html, styles/style.css   pantallas y HUD
+src/core/config.js             todos los números del juego (+ textos de AMENAZA y ayudas `ui`)
+src/core/rng.js                azar con semilla y reloj controlable (pruebas)
+src/core/util.js               utilidades matemáticas
+src/core/flow.js               tabla de estados y teclas/botones -> acciones (sin efectos)
+src/core/input.js              teclado compartido y controles
+src/core/audio.js              efectos y música sintetizados (WebAudio)
+src/render/vfx.js              partículas, anillos, estelas, temblor, números (pools)
+src/render/telegraphs.js       avisos en el suelo
+src/render/models.js           jugadores y jefes con primitivas + contorno de tinta
+src/render/arena.js            isla flotante y temas por jefe
+src/render/readability.js      lectura en el mundo: sombra de cadena, marca de objetivo, roles
+src/gameplay/rules.js          reglas puras (cadena, TAJO, vida, fases, ataques, lectura)
+src/gameplay/chain.js          la cadena: restricción, daño, TAJO, carga, electrificada
+src/gameplay/player.js         movimiento con aceleración, dash, anillo de recarga
+src/gameplay/projectiles.js    proyectiles con InstancedMesh (pool fijo)
+src/gameplay/attacks.js        bloques de ataque (generadores) y peligros persistentes
+src/gameplay/boss.js           máquina de estados del jefe
+src/ui/hud.js                  interfaz (AMENAZA, BARRIDO, vida, combo)
+src/ui/devpanel.js             panel de ajuste (?dev, F1)
+src/game.js                    loop, estados, cámara y flujo entre jefes
+tests/                         pruebas en Node (node --test) con stubs de render
+scripts/check.js, smoke.js     sintaxis y smoke de Chrome headless por file://
 ```
 
 Del **Skillshot Trainer** se rescató: modelos por primitivas con silueta

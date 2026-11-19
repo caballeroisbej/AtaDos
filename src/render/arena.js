@@ -126,7 +126,8 @@ const Arena = {
     c.width = c.height = S;
     const g = c.getContext('2d');
     const cx = S / 2;
-    g.fillStyle = '#7d7a76'; g.fillRect(0, 0, S, S);
+    // "Forja nocturna": pizarra oscura de bajo contraste para que avisos, cadena y jugadores resalten
+    g.fillStyle = '#4c4a4a'; g.fillRect(0, 0, S, S);
     // baldosas en anillos concéntricos
     const ringW = 44;
     for (let r = 0; r < cx; r += ringW) {
@@ -135,7 +136,7 @@ const Arena = {
       const off = Math.random() * Math.PI * 2;
       for (let i = 0; i < n; i++) {
         const a0 = off + i / n * Math.PI * 2, a1 = off + (i + 1) / n * Math.PI * 2;
-        const v = 104 + Math.floor(Math.random() * 34);
+        const v = 84 + Math.floor(Math.random() * 18);
         const warm = Math.floor(Math.random() * 8);
         g.fillStyle = `rgb(${v + warm},${v + warm - 2},${v - 4})`;
         g.beginPath();
@@ -144,8 +145,11 @@ const Arena = {
         g.closePath(); g.fill();
       }
     }
+    // grabado: anillos finos claros cada 2 hileras (ayudan a leer distancias)
+    g.strokeStyle = 'rgba(235,228,214,0.10)'; g.lineWidth = 2;
+    for (let r = ringW * 2; r < cx; r += ringW * 2) { g.beginPath(); g.arc(cx, cx, r, 0, Math.PI * 2); g.stroke(); }
     // círculo central (sello de la cadena)
-    g.strokeStyle = 'rgba(40,36,34,0.55)'; g.lineWidth = 6;
+    g.strokeStyle = 'rgba(20,18,18,0.6)'; g.lineWidth = 6;
     g.beginPath(); g.arc(cx, cx, 128, 0, Math.PI * 2); g.stroke();
     g.lineWidth = 3;
     for (let i = 0; i < 6; i++) {

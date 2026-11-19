@@ -9,6 +9,7 @@
 <body>
 
 <canvas id="game"></canvas>
+<div id="tags"></div>
 <div id="numbers"></div>
 <div id="flash"></div>
 <div id="vignette"></div>
@@ -19,10 +20,17 @@
     <div id="bossName">—</div>
     <div id="bossBar"><div id="bossGhost"></div><div id="bossFill"></div><div id="bossNotches"></div></div>
     <div id="bossLine"><span id="bossSub"></span><span id="bossStatus"></span></div>
+    <div id="threat"><span class="tk">AMENAZA</span><b id="threatLabel"></b><span id="threatAdvice"></span></div>
+    <div id="combo"></div>
+    <div id="charge"></div>
   </div>
 
-  <div id="combo"></div>
-  <div id="charge"></div>
+  <div id="sweep" class="off">
+    <div class="sw-head"><span class="sw-t">BARRIDO</span><span id="swState">FLOJA</span><b id="swMult">x0.0</b></div>
+    <div class="sw-bar"><i class="sw-p1" id="swP1"></i><i class="sw-p2" id="swP2"></i></div>
+    <div class="sw-foot"><span class="c1">LAZO</span><span>la cadena pega según cuánto barren los dos</span><span class="c2">BRASA</span></div>
+  </div>
+
 
   <div id="lifePanel">
     <div id="links"></div>
@@ -68,6 +76,8 @@
     <div><span class="ico">⚔️</span><b>TAJO:</b> cruzar al jefe de un lado al otro pega extra. Encadénenlos.</div>
     <div><span class="ico">⚡</span><b>Carga:</b> atrapen proyectiles <span class="orange">naranjos</span> con la cadena y el próximo TAJO pega más. Los <span class="purple">morados</span> la atraviesan.</div>
     <div><span class="ico">❤️</span><b>Vida compartida.</b> <span class="red">Rojo</span> = peligro · <span class="blue">azul</span> = refugio.</div>
+    <div><span class="ico">🎯</span><b>Amenaza:</b> la tarjeta bajo la barra dice qué viene; la marca <span class="red">roja</span> en el piso, a quién apunta.</div>
+    <div><span class="ico">🤝</span><b>Barrido y roles:</b> el medidor muestra cuánto barre cada uno; sobre la cabeza, qué le toca: QUIETO, ATACA, AL AZUL…</div>
   </div>
 
   <div class="controls">
@@ -95,6 +105,7 @@
   </div>
   <div class="menu">
     <button id="resumeBtn" class="primary">▶ Seguir (Esc)</button>
+    <button id="restartBtn">↻ Reiniciar jefe (R)</button>
     <button id="pauseMenuBtn">☰ Volver al menú (Q)</button>
   </div>
 </div>
@@ -113,13 +124,17 @@
 
 <script src="vendor/three.min.js"></script>
 <script src="src/core/config.js"></script>
+<script src="src/core/rng.js"></script>
 <script src="src/core/util.js"></script>
+<script src="src/core/flow.js"></script>
 <script src="src/core/input.js"></script>
 <script src="src/core/audio.js"></script>
 <script src="src/render/vfx.js"></script>
 <script src="src/render/telegraphs.js"></script>
 <script src="src/render/models.js"></script>
 <script src="src/render/arena.js"></script>
+<script src="src/render/readability.js"></script>
+<script src="src/gameplay/rules.js"></script>
 <script src="src/gameplay/chain.js"></script>
 <script src="src/gameplay/player.js"></script>
 <script src="src/gameplay/projectiles.js"></script>

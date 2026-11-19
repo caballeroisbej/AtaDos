@@ -122,6 +122,16 @@ const AudioFX = {
         this.noise(0.12, { filter: 'bandpass', freq: 3200, vol: 0.12, q: 4 });
         this.tone(1400, 0.08, { type: 'square', vol: 0.04, lp: 4000 });
         break;
+      case 'alert': { // el jefe elige ataque: un timbre por tipo de amenaza (se aprende de oído)
+        if (!this._gate('alert', 0.3)) return;
+        const k = o.kind;
+        if (k === 'safe') { this.tone(392, 0.16, { type: 'sine', vol: 0.09 }); this.tone(587, 0.22, { type: 'sine', vol: 0.08, delay: 0.12 }); }
+        else if (k === 'electric') { this.tone(1320, 0.07, { type: 'square', vol: 0.04, lp: 4000 }); this.tone(1320, 0.07, { type: 'square', vol: 0.04, lp: 4000, delay: 0.09 }); this.tone(1760, 0.1, { type: 'square', vol: 0.035, lp: 4000, delay: 0.18 }); }
+        else if (k === 'anchor') { this.tone(523, 0.3, { type: 'triangle', vol: 0.08 }); this.tone(784, 0.35, { type: 'triangle', vol: 0.06, delay: 0.1 }); }
+        else if (k === 'projectile' || k === 'pierce') { this.tone(660, 0.08, { type: 'triangle', vol: 0.07 }); this.tone(880, 0.1, { type: 'triangle', vol: 0.06, delay: 0.08 }); }
+        else { this.tone(300, 0.14, { type: 'sawtooth', vol: 0.06, lp: 1400 }); this.tone(220, 0.2, { type: 'sawtooth', vol: 0.06, lp: 1200, delay: 0.12 }); }
+        break;
+      }
       case 'telegraph':
         if (!this._gate('telegraph', 0.12)) return;
         this.tone(740, 0.12, { type: 'square', vol: 0.05, lp: 2200 });

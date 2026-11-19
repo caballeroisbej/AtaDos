@@ -65,37 +65,21 @@ class Chain {
     this.mult = 0;
     this.yankCd = 0;
     this.visible = true;
+    this._ct = this._ct || { len: 0, t: 0, d: 0, cx: 0, cz: 0, nx: 0, nz: 0, side: 0, inside: false };
   }
 
   get maxLength() { return CONFIG.chain.length * this.g.mods.chainLength; }
 
   // ---------- restricción de largo máximo (por subpaso) ----------
   constrain(a, b) {
-    const L = this.maxLength;
-    let dx = b.x - a.x, dz = b.z - a.z;
-    const d = Math.sqrt(dx * dx + dz * dz);
-    if (d <= L || d < 1e-6) return;
-    const nx = dx / d, nz = dz / d;
-    const ex = d - L;
-    const W = CONFIG.chain.dasherWeight;
-    // fracción de la corrección que se lleva 'a': si 'a' hace dash pesa más y se mueve menos
-    let wa = 0.5;
-    if (a.dashing && !b.dashing) wa = W;
-    else if (b.dashing && !a.dashing) wa = 1 - W;
-    a.x += nx * ex * wa; a.z += nz * ex * wa;
-    b.x -= nx * ex * (1 - wa); b.z -= nz * ex * (1 - wa);
-    // velocidad relativa que los separa: se anula (la cadena no estira)
-    const rv = (b.vx - a.vx) * nx + (b.vz - a.vz) * nz;
-    if (rv > 0) {
-      a.vx += nx * rv * wa; a.vz += nz * rv * wa;
-      b.vx -= nx * rv * (1 - wa); b.vz -= nz * rv * (1 - wa);
-      if (rv > CONFIG.chain.yankSpeed && this.yankCd <= 0) {
-        this.yankCd = 0.6;
-        const pulled = wa > 0.5 ? a : b;
-        AudioFX.play('yank');
-        VFX.number(pulled.x, 2.0, pulled.z, '¡TIRÓN!', 'word');
-        VFX.burst(pulled.x, 0.5, pulled.z, { count: 8, speed: 3, up: 1, color: 0xffffff, size: 0.25, life: 0.35 });
-      }
+    const C = CONFIG.chain;
+    const r = Rules.constrain(a, b, this.maxLength, C.dasherWeight);
+    if (r.rv > C.yankSpeed && this.yankCd <= 0) {
+      this.yankCd = C.yankCooldown;
+      const pulled = r.pulled;
+      AudioFX.play('yank');
+      VFX.number(pulled.x, 2.0, pulled.z, '¡TIRÓN!', 'word');
+      VFX.burst(pulled.x, 0.5, pulled.z, { count: 8, speed: 3, up: 1, color: 0xffffff, size: 0.25, life: 0.35 });
     }
   }
 
@@ -110,10 +94,7 @@ class Chain {
   // ¿el proyectil (x,z,r) choca con la cadena? (los extremos, pegados a los jugadores, no cuentan)
   blocks(x, z, r) {
     const a = this.g.players[0], b = this.g.players[1];
-    if (this.len < 1.0) return false;
-    const c = U.segClosest(a.x, a.z, b.x, b.z, x, z);
-    const margin = (CONFIG.player.radius + 0.12) / this.len;
-    return c.t > margin && c.t < 1 - margin && c.d < r + CONFIG.chain.thickness * this.g.mods.thickness;
+    return Rules.blocks(a, b, x, z, r, CONFIG.player.radius, CONFIG.chain.thickness * this.g.mods.thickness);
   }
 
   // ---------- lógica (por subpaso) ----------
@@ -135,25 +116,22 @@ class Chain {
 
     const boss = g.boss;
     this.contact = false;
+    this.mult = 0;
     if (!boss || !boss.hittable || d < 1e-4) { this.prevSide = 0; return; }
 
-    const c = U.segClosest(a.x, a.z, b.x, b.z, boss.x, boss.z);
-    const inside = c.d < boss.radius && c.t > 0.02 && c.t < 0.98 && d > C.minLength;
+    const ct = Rules.chainContact(a, b, boss, C.minLength, this._ct);
+    const inside = ct.inside;
     // velocidad de la cadena en el punto de contacto, relativa al jefe
-    const vqx = a.vx * (1 - c.t) + b.vx * c.t - boss.vx;
-    const vqz = a.vz * (1 - c.t) + b.vz * c.t - boss.vz;
-    const sweep = Math.abs(vqx * nx + vqz * nz);
-    const mult = U.clamp(sweep / C.refSpeed, C.minMult, C.maxMult);
+    const mult = Rules.sweepMult(a, b, boss, ct.t, ct.nx, ct.nz, C);
     this.mult = inside ? mult : 0;
 
     // punto de impacto visual: borde del jefe hacia el segmento
-    let px = c.x, pz = c.z;
-    if (c.d > 1e-3) { px = boss.x + (c.x - boss.x) / c.d * Math.min(c.d, boss.radius * 0.9); pz = boss.z + (c.z - boss.z) / c.d * Math.min(c.d, boss.radius * 0.9); }
+    let px = ct.cx, pz = ct.cz;
+    if (ct.d > 1e-3) { px = boss.x + (ct.cx - boss.x) / ct.d * Math.min(ct.d, boss.radius * 0.9); pz = boss.z + (ct.cz - boss.z) / ct.d * Math.min(ct.d, boss.radius * 0.9); }
     this.contactX = px; this.contactZ = pz;
 
     // de qué lado de la cadena está el jefe (para detectar el TAJO)
-    const cross = abx * (boss.z - a.z) - abz * (boss.x - a.x);
-    const side = Math.abs(cross) < 1e-3 ? 0 : (cross > 0 ? 1 : -1);
+    const side = ct.side;
 
     if (boss.state === 'dormant') {
       if (inside) boss.wake();
@@ -166,8 +144,7 @@ class Chain {
       if (this.electrified) {
         if (this.zapCd <= 0) this._zap(boss);
       } else {
-        const comboF = 1 + Math.min(this.combo, C.comboMax) * C.comboBonus;
-        const dealt = boss.damage(C.dps * mult * g.mods.damage * comboF * dt, 'chain');
+        const dealt = boss.damage(Rules.tickDamage(C, mult, g.mods, this.combo, dt), 'chain');
         this.accum += dealt;
         this.tickT += dt;
         if (g.mods.burnDps > 0) boss.burnT = 3;
@@ -184,7 +161,7 @@ class Chain {
     }
 
     // TAJO: el jefe pasó de un lado de la cadena al otro, dentro del segmento
-    if (boss.state === 'fight' && side !== 0 && this.prevSide !== 0 && side !== this.prevSide && c.t > 0.02 && c.t < 0.98 && d > C.minLength && c.d < boss.radius) {
+    if (boss.state === 'fight' && Rules.isTajo(this.prevSide, ct, boss.radius, C.minLength)) {
       if (!this.electrified) this._tajo(boss, Math.max(C.slashMinMult, mult), px, pz);
     }
     if (side !== 0) this.prevSide = side;
@@ -192,10 +169,9 @@ class Chain {
 
   _tajo(boss, mult, px, pz) {
     const g = this.g, C = CONFIG.chain;
-    const comboF = 1 + Math.min(this.combo, C.comboMax) * C.comboBonus;
     const charged = this.charge > 0;
     const chargeF = 1 + this.charge * C.chargePerBlock;
-    const dealt = boss.damage(C.slashDamage * mult * g.mods.damage * comboF * chargeF, 'tajo');
+    const dealt = boss.damage(Rules.tajoDamage(C, mult, g.mods, this.combo, this.charge), 'tajo');
     if (charged) {
       VFX.number(boss.x, 3.6 + boss.radius * 0.4, boss.z, '¡CARGADO! +' + Math.round(this.charge * C.chargePerBlock * 100) + '%', 'word warn', 1.1);
       VFX.ring(boss.x, boss.z, { color: 0xffd36a, from: boss.radius, to: boss.radius * 3.2, dur: 0.45 });
@@ -233,13 +209,13 @@ class Chain {
 
   _zap(boss) {
     const g = this.g;
-    this.zapCd = 1.1;
+    this.zapCd = CONFIG.chain.zapCooldown;
     g.damageTeam(1, 'zap', boss.x, boss.z);
     // empujar a ambos lejos del jefe
     for (const p of g.players) {
       let dx = p.x - boss.x, dz = p.z - boss.z;
       const l = Math.sqrt(dx * dx + dz * dz) || 1;
-      p.knock(dx / l, dz / l, 8);
+      p.knock(dx / l, dz / l, CONFIG.chain.zapKnock);
     }
     AudioFX.play('zap');
     VFX.flash('rgba(255,236,120,1)', 0.25);

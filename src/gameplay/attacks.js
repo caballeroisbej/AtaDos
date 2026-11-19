@@ -13,25 +13,24 @@ const Attacks = {
     try {
       for (let r = 0; r < reps; r++) {
         const tgt = g.pickPlayer(r === 0 ? 'random' : 'farthest', b);
+        b.target(tgt, true);
         let ang = Math.atan2(tgt.x - b.x, tgt.z - b.z);
         const len = () => rayToCircle(b.x, b.z, Math.sin(ang), Math.cos(ang), R - b.radius) + b.radius;
         const tel = g.tele.rect(b.x, b.z, ang, len(), b.radius * 2, { owner: b, dur: p.windup });
         b.anim = 'windup';
         AudioFX.play('telegraph');
-        let e = 0;
-        while (e < p.windup) {
-          const dt = yield; e += dt;
+        yield* showTelegraph(tel, p.windup, (dt, e) => {
           if (e < p.aimTime) ang = U.dampAngle(ang, Math.atan2(tgt.x - b.x, tgt.z - b.z), 7, dt);
           b.facing = ang;
           tel.set(b.x, b.z, ang, len());
           if (Math.random() < dt * 12) VFX.burst(b.x - Math.sin(ang) * b.radius, 0.2, b.z - Math.cos(ang) * b.radius, { count: 3, speed: 2, up: 1.5, color: 0xb8a284, size: 0.4, life: 0.5 });
-        }
-        tel.remove();
+        });
         const dx = Math.sin(ang), dz = Math.cos(ang);
         b.anim = 'charge';
         AudioFX.play('charge');
         let trav = 0, crashed = false;
-        trail = VFX.trail(() => ({ x: b.x, y: 1.2, z: b.z }), { color: b.def.theme.accent, width: b.radius * 2, opacity: 0.35, fade: 0.3 });
+        const tp = { x: 0, y: 1.2, z: 0 }; // reutilizado por la estela (sin objetos por frame)
+        trail = VFX.trail(() => { tp.x = b.x; tp.z = b.z; return tp; }, { color: b.def.theme.accent, width: b.radius * 2, opacity: 0.35, fade: 0.3 });
         while (true) {
           const dt = yield;
           const st = p.speed * dt;
@@ -68,9 +67,8 @@ const Attacks = {
     const tel = g.tele.circle(b.x, b.z, b.radius + 1.0, { owner: b, dur: p.windup, color: pierceCol, layer: 1 });
     b.anim = 'cast';
     AudioFX.play('telegraph');
-    yield* follow(p.windup, () => tel.set(b.x, b.z));
-    tel.remove();
-    const base = Math.random() * Math.PI * 2;
+    yield* showTelegraph(tel, p.windup, () => tel.set(b.x, b.z));
+    const base = RNG.next() * Math.PI * 2;
     for (let w = 0; w < p.waves; w++) {
       const off = base + w * (Math.PI / p.count) + (p.spin ? w * p.spin : 0);
       for (let i = 0; i < p.count; i++) {
@@ -91,18 +89,16 @@ const Attacks = {
     const col = p.pierce ? CONFIG.colors.pierce : CONFIG.colors.projectile;
     for (let k = 0; k < p.bursts; k++) {
       const tgt = g.pickPlayer('random', b);
+      b.target(tgt, true);
       let ang = Math.atan2(tgt.x - b.x, tgt.z - b.z);
       const tel = g.tele.rect(b.x, b.z, ang, 10, 0.55, { owner: b, dur: p.windup, color: col });
       b.anim = 'cast';
       AudioFX.play('telegraph');
-      let e = 0;
-      while (e < p.windup) {
-        const dt = yield; e += dt;
+      yield* showTelegraph(tel, p.windup, (dt, e) => {
         if (e < p.windup * 0.7) ang = U.dampAngle(ang, Math.atan2(tgt.x - b.x, tgt.z - b.z), 9, dt);
         b.facing = ang;
         tel.set(b.x, b.z, ang);
-      }
-      tel.remove();
+      });
       for (let i = 0; i < p.count; i++) {
         const a = ang + (p.count > 1 ? (i / (p.count - 1) - 0.5) * p.spread : 0);
         const sx = Math.sin(a), sz = Math.cos(a);
@@ -131,9 +127,7 @@ const Attacks = {
         U.clampToArena(t, R - b.radius - 0.3);
         const tel = g.tele.circle(t.x, t.z, p.radius, { owner: b, dur: p.airTime });
         const sx = b.x, sz = b.z;
-        let e = 0;
-        while (e < p.airTime) {
-          const dt = yield; e += dt;
+        yield* showTelegraph(tel, p.airTime, (dt, e) => {
           if (e < p.airTime - p.lock) {
             const mm = g.mid();
             t.x = U.damp(t.x, mm.x, 5, dt); t.z = U.damp(t.z, mm.z, 5, dt);
@@ -147,8 +141,7 @@ const Attacks = {
           const kh = U.easeInOut(Math.min(1, k / 0.45));
           b.x = U.lerp(sx, t.x, kh); b.z = U.lerp(sz, t.z, kh);
           b.vx = b.vz = 0;
-        }
-        tel.remove();
+        });
         b.x = t.x; b.z = t.z; b.y = 0; b.airborne = false; b.anim = 'land';
         AudioFX.play('land');
         VFX.shake(0.55, 0.35);
@@ -181,7 +174,7 @@ const Attacks = {
       // refugio: a una distancia caminable del centro del equipo, dentro de la arena
       let S = null;
       for (let i = 0; i < 40 && !S; i++) {
-        const a = Math.random() * Math.PI * 2, d = U.rand(3.5, 7.5);
+        const a = RNG.next() * Math.PI * 2, d = U.rand(3.5, 7.5);
         const c = { x: m.x + Math.sin(a) * d, z: m.z + Math.cos(a) * d };
         if (Math.sqrt(c.x * c.x + c.z * c.z) < R - p.safeRadius - 1) S = c;
       }
@@ -193,9 +186,7 @@ const Attacks = {
       const L = { x: lx * R * 0.55, z: lz * R * 0.55 };
       const tel = g.tele.safeZone(S.x, S.z, p.safeRadius, R, { owner: b, dur: p.time });
       const sx = b.x, sz = b.z;
-      let e = 0;
-      while (e < p.time) {
-        const dt = yield; e += dt;
+      yield* showTelegraph(tel, p.time, (dt, e) => {
         const k = e / p.time;
         b.y = k < 0.15 ? U.easeOutCubic(k / 0.15) * 13 : k < 0.9 ? 13 : 13 * (1 - U.easeInCubic((k - 0.9) / 0.1));
         const kh = U.easeInOut(Math.min(1, k / 0.85));
@@ -205,8 +196,7 @@ const Attacks = {
           const a = Math.random() * Math.PI * 2, d = Math.random() * R;
           VFX.parts.emit(Math.cos(a) * d, 0.1, Math.sin(a) * d, 0, 2 + Math.random() * 2, 0, 0.5, 0.35, 0xb8a284, { gravity: -8 });
         }
-      }
-      tel.remove();
+      });
       b.x = L.x; b.z = L.z; b.y = 0; b.airborne = false; b.anim = 'land';
       AudioFX.play('land'); AudioFX.play('thunder');
       VFX.shake(0.9, 0.6);
@@ -233,18 +223,16 @@ const Attacks = {
   // ---------- ZARPAZO EN CONO ----------
   *swipe(b, g, p) {
     const tgt = g.pickPlayer('nearest', b);
+    b.target(tgt, true);
     let ang = Math.atan2(tgt.x - b.x, tgt.z - b.z);
     const tel = g.tele.cone(b.x, b.z, ang, p.half, p.range, { owner: b, dur: p.windup });
     b.anim = 'windup';
     AudioFX.play('telegraph');
-    let e = 0;
-    while (e < p.windup) {
-      const dt = yield; e += dt;
+    yield* showTelegraph(tel, p.windup, (dt, e) => {
       if (e < p.aimTime) ang = U.dampAngle(ang, Math.atan2(tgt.x - b.x, tgt.z - b.z), 6, dt);
       b.facing = ang;
       tel.set(b.x, b.z, ang);
-    }
-    tel.remove();
+    });
     b.anim = 'swipe';
     AudioFX.play('swipe');
     for (let i = 0; i < 18; i++) {
@@ -269,8 +257,7 @@ const Attacks = {
     b.anim = 'crouch';
     const tel = g.tele.circle(b.x, b.z, b.radius + 1.3, { owner: b, dur: p.windup, layer: 1 });
     AudioFX.play('telegraph');
-    yield* follow(p.windup, () => tel.set(b.x, b.z));
-    tel.remove();
+    yield* showTelegraph(tel, p.windup, () => tel.set(b.x, b.z));
     for (let w = 0; w < p.waves; w++) {
       b.anim = 'land';
       g.hazards.push(new WaveHazard(g, b.x, b.z, b.radius, p.speed, p.damage, b));
@@ -325,7 +312,7 @@ const Attacks = {
     const m = g.mid();
     let dx = m.x - b.x, dz = m.z - b.z;
     let l = Math.sqrt(dx * dx + dz * dz);
-    if (l < 0.5) { const a = Math.random() * Math.PI * 2; dx = Math.sin(a); dz = Math.cos(a); l = 1; }
+    if (l < 0.5) { const a = RNG.next() * Math.PI * 2; dx = Math.sin(a); dz = Math.cos(a); l = 1; }
     const D = U.clamp(g.chain.maxLength * 0.6, b.radius + 2.4, 6.5);
     const z = { x: b.x + dx / l * D, z: b.z + dz / l * D };
     U.clampToArena(z, R - p.radius - 0.6);
@@ -343,6 +330,7 @@ const Attacks = {
           fireT = p.fireInterval;
           // dispara al que gira, no al que sostiene el ancla
           const tgt = zone.occupant ? g.players.find((q) => q !== zone.occupant) : g.pickPlayer('nearest', b);
+          b.target(tgt, true);
           const a = Math.atan2(tgt.x - b.x, tgt.z - b.z);
           g.projectiles.spawn(b.x + Math.sin(a) * b.radius, b.z + Math.cos(a) * b.radius, Math.sin(a) * 6.5, Math.cos(a) * 6.5, { damage: p.damage, r: 0.32 });
           AudioFX.play('shoot');
@@ -367,9 +355,8 @@ const Attacks = {
     const tel = g.tele.circle(b.x, b.z, b.radius + 1.0, { owner: b, dur: p.windup, color: CONFIG.colors.projectile, layer: 1 });
     b.anim = 'cast';
     AudioFX.play('telegraph');
-    yield* follow(p.windup, () => tel.set(b.x, b.z));
-    tel.remove();
-    let e = 0, fire = 0, ang = Math.random() * Math.PI * 2;
+    yield* showTelegraph(tel, p.windup, () => tel.set(b.x, b.z));
+    let e = 0, fire = 0, ang = RNG.next() * Math.PI * 2;
     while (e < p.duration) {
       const dt = yield; e += dt; fire -= dt;
       ang += p.rotSpeed * dt;
@@ -389,14 +376,26 @@ const Attacks = {
 
   // ---------- RAYOS ----------
   *lightning(b, g, p) {
-    b.anim = 'cast';
-    for (let s = 0; s < p.strikes; s++) {
-      for (const pl of g.players) g.hazards.push(new LightningHazard(g, pl, p, b));
-      AudioFX.play('telegraph');
-      yield* U.wait(p.delay);
+    const strikes = [];
+    let complete = false;
+    try {
+      b.anim = 'cast';
+      for (let s = 0; s < p.strikes; s++) {
+        for (const pl of g.players) {
+          b.target(pl);
+          const strike = new LightningHazard(g, pl, p, b);
+          strikes.push(strike);
+          g.hazards.push(strike);
+        }
+        AudioFX.play('telegraph');
+        yield* U.wait(p.delay);
+      }
+      yield* U.wait(p.windup);
+      complete = true;
+    } finally {
+      if (!complete) for (const strike of strikes) strike.cancel();
+      b.anim = 'idle';
     }
-    yield* U.wait(p.windup);
-    b.anim = 'idle';
   },
 
   // ---------- DOS ATAQUES A LA VEZ ----------
@@ -406,9 +405,17 @@ const Attacks = {
 };
 
 // ---------- helpers de generadores ----------
-function* follow(t, fn) {
-  let e = 0;
-  while (e < t) { e += yield; fn(); }
+function* showTelegraph(tel, duration, update) {
+  let elapsed = 0;
+  try {
+    while (elapsed < duration) {
+      const dt = yield;
+      elapsed += dt;
+      update(dt, elapsed);
+    }
+  } finally {
+    tel.remove();
+  }
 }
 function* parallel(gens) {
   let active = gens.slice();

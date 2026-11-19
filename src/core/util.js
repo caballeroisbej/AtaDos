@@ -3,9 +3,10 @@
 const U = {
   clamp: (v, a, b) => (v < a ? a : v > b ? b : v),
   lerp: (a, b, t) => a + (b - a) * t,
-  rand: (a, b) => a + Math.random() * (b - a),
-  randi: (a, b) => Math.floor(a + Math.random() * (b - a + 1)),
-  choice: (arr) => arr[Math.floor(Math.random() * arr.length)],
+  // azar de gameplay: pasa por RNG (src/core/rng.js) para poder fijar la semilla
+  rand: (a, b) => a + RNG.next() * (b - a),
+  randi: (a, b) => Math.floor(a + RNG.next() * (b - a + 1)),
+  choice: (arr) => arr[Math.floor(RNG.next() * arr.length)],
   len: (x, z) => Math.sqrt(x * x + z * z),
   dist: (a, b) => Math.sqrt((a.x - b.x) * (a.x - b.x) + (a.z - b.z) * (a.z - b.z)),
   // ángulo de rotación Y para mirar hacia (dx, dz) — el frente de los modelos es +Z
@@ -24,7 +25,7 @@ const U = {
   easeInOut: (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2),
   shuffle(arr) {
     for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = Math.floor(RNG.next() * (i + 1));
       const t = arr[i]; arr[i] = arr[j]; arr[j] = t;
     }
     return arr;

@@ -15,6 +15,23 @@ const Models = {
       blending: THREE.AdditiveBlending, depthWrite: false,
     });
   },
+  // Contorno de tinta (casco invertido): la firma visual del remake. Se crea UNA vez
+  // por modelo al construirlo; el material es compartido y comparte geometría.
+  outline(root, k) {
+    if (!this._lam.has('ink')) this._lam.set('ink', new THREE.MeshBasicMaterial({ color: 0x07060a, side: THREE.BackSide }));
+    const ink = this._lam.get('ink');
+    const list = [];
+    root.traverse((o) => { if (o.isMesh && !o.material.transparent && o.material.side !== THREE.BackSide) list.push(o); });
+    for (const m of list) {
+      const hull = new THREE.Mesh(m.geometry, ink);
+      hull.scale.setScalar(k || 1.08);
+      hull.castShadow = false;
+      hull.userData.cs = false;
+      m.add(hull);
+    }
+    return root;
+  },
+
   add(parent, geo, mat, x, y, z, rx, ry, rz, noShadow) {
     const m = new THREE.Mesh(geo, mat);
     m.position.set(x || 0, y || 0, z || 0);
