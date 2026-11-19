@@ -95,7 +95,17 @@ async function main() {
   const keyDown = (code) => send('Input.dispatchKeyEvent', { type: 'keyDown', code, key: KEYS[code][0], windowsVirtualKeyCode: KEYS[code][1] });
   const keyUp = (code) => send('Input.dispatchKeyEvent', { type: 'keyUp', code, key: KEYS[code][0], windowsVirtualKeyCode: KEYS[code][1] });
   const tap = async (code) => { await keyDown(code); await sleep(40); await keyUp(code); await sleep(60); };
-  const hold = async (codes, ms) => { for (const c of codes) await keyDown(c); await sleep(ms); for (const c of codes) await keyUp(c); };
+  const step = (frames = 1) => evaluate(`ATADOS.step(${frames}, 1/30)`);
+  const stepUntil = (condition, maxFrames) => evaluate(`(() => {
+    const ready = () => (${condition});
+    for (let i = 0; i < ${maxFrames} && !ready(); i++) ATADOS.step(1, 1/30);
+    return !!ready();
+  })()`);
+  const withKeys = async (codes, action) => {
+    for (const code of codes) await keyDown(code);
+    try { return await action(); }
+    finally { for (const code of codes) await keyUp(code); }
+  };
   const shot = async (name) => {
     const r = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(OUT, name + '.png'), Buffer.from(r.data, 'base64'));
@@ -128,6 +138,10 @@ async function main() {
   check('ventana 390×740: título y música alcanzables con práctica abierta', layout.logoTop >= 0 && layout.musicWidth > 30 && layout.bottom <= layout.height, layout);
   await send('Emulation.clearDeviceMetricsOverride');
 
+  // El arranque anterior usa el loop normal. A partir de aquí, mantenemos
+  // la entrada real de Chrome y avanzamos la simulación entre keydown y keyup.
+  await evaluate('ATADOS.manual = true; Clock.set(0)');
+
   // ---------- 2. acceso básico: tecla 1 = 2 jugadores ----------
   await tap('Digit1');
   let s = await snap();
@@ -145,17 +159,15 @@ async function main() {
   check('TAJO queda bajo la tarjeta de amenaza', hudLayout.top >= hudLayout.bottom, hudLayout);
 
   // ---------- 3. dos jugadores en el mismo teclado a la vez ----------
-  const fps = await evaluate('new Promise((r) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 1000) requestAnimationFrame(f); else r(n); }; requestAnimationFrame(f); })');
-  console.log(`  (headless con render por software: ~${fps} fps)`);
   const before = s.players;
-  // mantener las teclas hasta que ambos se muevan (el render por software puede ir a pocos fps)
-  await keyDown('KeyD'); await keyDown('ArrowLeft');
-  await waitFor(`(() => { const p = ATADOS.players; return p[0].x > ${before[0].x} + 0.3 && p[1].x < ${before[1].x} - 0.3; })()`, 5000);
-  await keyUp('KeyD'); await keyUp('ArrowLeft');
+  await withKeys(['KeyD', 'ArrowLeft'], () => stepUntil(
+    `ATADOS.players[0].x > ${before[0].x} + 0.3 && ATADOS.players[1].x < ${before[1].x} - 0.3`,
+    30,
+  ));
   s = await snap();
   check('P1 (D) y P2 (←) se mueven a la vez y en sentidos opuestos', s.players[0].x > before[0].x + 0.3 && s.players[1].x < before[1].x - 0.3,
     { p1: [before[0].x.toFixed(2), s.players[0].x.toFixed(2)], p2: [before[1].x.toFixed(2), s.players[1].x.toFixed(2)] });
-  await tap('Space'); await tap('Enter');
+  await withKeys(['Space', 'Enter'], () => step());
   s = await snap();
   check('dash de los dos (Espacio y Enter) sin pausar ni salir', s.stats.dashes >= 2 && s.state === 'playing', s.stats);
 
@@ -164,7 +176,7 @@ async function main() {
   s = await snap();
   check('Esc pausa y muestra la pantalla de pausa', s.state === 'paused' && s.screen === 'pauseScreen', s.screen);
   const frozen = s.players[0];
-  await hold(['KeyA'], 300);
+  await withKeys(['KeyA'], () => step(9));
   s = await snap();
   check('en pausa no se mueve nadie', Math.abs(s.players[0].x - frozen.x) < 1e-6);
   await shot('03-pausa');
@@ -174,16 +186,15 @@ async function main() {
 
   // ---------- 5. la cadena (con teclas) despierta al jefe ----------
   // los dos caminan hacia el jefe separándose: la cadena lo cruza
-  await hold(['KeyW', 'KeyA', 'ArrowUp', 'ArrowRight'], 250);
-  let woke = false;
-  for (let i = 0; i < 12 && !woke; i++) {
-    await hold(['KeyW', 'ArrowUp'], 300);
-    woke = (await snap()).boss.state !== 'dormant';
-  }
+  await withKeys(['KeyW', 'KeyA', 'ArrowUp', 'ArrowRight'], () => step(8));
+  const woke = await withKeys(['KeyW', 'ArrowUp'], () => stepUntil(
+    "ATADOS.boss.state !== 'dormant'",
+    120,
+  ));
   check('caminando con la cadena tensa se despierta al jefe (entrada real)', woke, (await snap()).boss.state);
 
   // ---------- 6. lectura: tarjeta AMENAZA y roles mientras ataca ----------
-  const sawThreat = await waitFor("ATADOS.boss.intent && document.getElementById('threat').classList.contains('on') && document.getElementById('threatLabel').textContent.length > 0", 12000);
+  const sawThreat = await stepUntil("ATADOS.boss.intent && document.getElementById('threat').classList.contains('on') && document.getElementById('threatLabel').textContent.length > 0", 240);
   const threat = await evaluate("({ label: document.getElementById('threatLabel').textContent, cls: document.getElementById('threat').className, attack: ATADOS.boss.intent && ATADOS.boss.intent.def.type, roles: ATADOS.snapshot().roles })");
   check('cuando el jefe ataca, la tarjeta AMENAZA dice qué es y con su color', sawThreat && /k-(danger|projectile)/.test(threat.cls), threat);
   check('medidor de BARRIDO visible en la pelea', await evaluate("!document.getElementById('sweep').classList.contains('off')"));
@@ -201,19 +212,19 @@ async function main() {
   await tap('Enter');
   check('Enter apretado justo al perder NO reintenta (bloqueo)', (await snap()).state === 'defeat');
   check('aparece la pantalla de derrota', await waitFor("ATADOS.snapshot().screen === 'endScreen'", 4000));
-  await sleep(1200);
+  await evaluate('Clock.advance(1500)');
   await tap('Enter');
   s = await snap();
   check('Enter en la derrota reintenta el mismo jefe con vida llena', s.state === 'playing' && s.bossIndex === 0 && s.team.links === s.team.maxLinks, { state: s.state, links: s.team.links });
 
   // ---------- 9. jefe derrotado -> mejora -> jefe 2 ----------
   await evaluate('ATADOS.boss.wake()');
-  await waitFor("ATADOS.boss.state === 'fight'", 4000);
+  await stepUntil("ATADOS.boss.state === 'fight'", 140);
   await evaluate('ATADOS.boss.damage(ATADOS.boss.hp + 1, "test")');
-  check('jefe derrotado pasa a elegir mejora', await waitFor("ATADOS.state === 'upgrade'", 8000), (await snap()).state);
+  check('jefe derrotado pasa a elegir mejora', await stepUntil("ATADOS.state === 'upgrade'", 240), (await snap()).state);
   await tap('Digit1'); // bloqueado al aparecer: no debe elegir
   check('la mejora no se elige sin querer al aparecer', (await snap()).state === 'upgrade');
-  await sleep(900);
+  await evaluate('Clock.advance(700)');
   await tap('Digit1');
   s = await snap();
   check('1 elige mejora y empieza el jefe 2', s.state === 'playing' && s.bossIndex === 1 && s.boss.id === 'sapo', { state: s.state, boss: s.boss && s.boss.id });
@@ -274,7 +285,7 @@ async function main() {
   check('sin pedidos de red (todo local por file://)', network.length === 0, network.slice(0, 5));
 
   ws.close();
-  const summary = { when: new Date().toISOString(), chrome: path.basename(chrome), seconds: ((Date.now() - t0) / 1000).toFixed(1), headlessFps: fps, passed: results.length - failed, failed, results };
+  const summary = { when: new Date().toISOString(), chrome: path.basename(chrome), seconds: ((Date.now() - t0) / 1000).toFixed(1), passed: results.length - failed, failed, results };
   fs.writeFileSync(path.join(OUT, 'smoke.json'), JSON.stringify(summary, null, 2));
   console.log(`\n${failed ? 'FALLÓ' : 'OK'}: ${results.length - failed}/${results.length} comprobaciones · ${summary.seconds}s · capturas y smoke.json en test-results/`);
   process.exitCode = failed ? 1 : 0;

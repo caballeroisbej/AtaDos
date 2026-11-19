@@ -137,3 +137,12 @@ volvió a recorrer el cooperativo con ambos teclados, el reinicio y la práctica
 a 390 px. Completó la progresión de los tres jefes, la elección de mejoras y
 la pantalla de victoria con los atajos de desarrollo para inducir las derrotas
 de los jefes. Terminó con código 0 y sin errores ni solicitudes web.
+
+### Validación tras incorporar el remake a main
+
+En la carpeta principal de AtaDos, el primer smoke se ejecutó con render por
+software a cerca de un cuadro por segundo. Algunas pulsaciones y transiciones
+dependían de que el navegador avanzara suficientes cuadros en tiempo real.
+El smoke conserva el arranque con el loop normal y las pulsaciones enviadas
+por Chrome. Luego avanza la simulación y el reloj de menús de forma controlada.
+`npm run verify` volvió a pasar (32 pruebas de Node y 33 comprobaciones de Chrome).
